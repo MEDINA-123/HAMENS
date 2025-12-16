@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HAMENS - Monitor Climático</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: #0a192f;
+            color: #00e1ff;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        body::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 30%, rgba(0, 100, 150, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 70%, rgba(0, 150, 200, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 40% 80%, rgba(0, 80, 120, 0.1) 0%, transparent 50%);
+            z-index: -1;
+        }
+
+        .container {
+            width: 90%;
+            max-width: 1000px;
+            margin: 20px auto;
+            padding: 20px;
+            position: relative;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding: 20px;
+            border-bottom: 2px solid rgba(0, 225, 255, 0.3);
+        }
+
+        .header h1 {
+            font-size: 2.8rem;
+            letter-spacing: 3px;
+            margin-bottom: 10px;
+            text-shadow: 0 0 10px rgba(0, 225, 255, 0.7);
+            font-weight: 300;
+        }
+
+        .header p {
+            color: rgba(0, 225, 255, 0.7);
+            font-size: 1.1rem;
+            letter-spacing: 1px;
+        }
+
+        .status-bar {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-bottom: 40px;
+            flex-wrap: wrap;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(10, 25, 47, 0.8);
+            border: 1px solid rgba(0, 225, 255, 0.3);
+            border-radius: 10px;
+            padding: 15px 25px;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: #ff3333;
+            box-shadow: 0 0 10px #ff3333;
+        }
+
+        .status-dot.online {
+            background-color: #00ff00;
+            box-shadow: 0 0 10px #00ff00;
+            animation: pulse 2s infinite;
+        }
+
+        .status-text {
+            font-size: 1rem;
+            color: rgba(0, 225, 255, 0.9);
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+
+        .sensor-card {
+            background: rgba(10, 25, 47, 0.8);
+            border: 1px solid rgba(0, 225, 255, 0.3);
+            border-radius: 15px;
+            padding: 30px;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .sensor-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0, 225, 255, 0.1);
+            border-color: rgba(0, 225, 255, 0.6);
+        }
+
+        .sensor-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, transparent, #00e1ff, transparent);
+        }
+
+        .sensor-icon {
+            text-align: center;
+            font-size: 3rem;
+            margin-bottom: 20px;
+            color: #00e1ff;
+            text-shadow: 0 0 15px rgba(0, 225, 255, 0.7);
+        }
+
+        .sensor-title {
+            font-size: 1.5rem;
+            text-align: center;
+            margin-bottom: 25px;
+            letter-spacing: 1px;
+            color: rgba(0, 225, 255, 0.9);
+            text-transform: uppercase;
+        }
+
+        .sensor-value {
+            font-size: 4.5rem;
+            text-align: center;
+            font-weight: 300;
+            margin: 20px 0;
+            text-shadow: 0 0 15px rgba(0, 225, 255, 0.8);
+            letter-spacing: 1px;
+            min-height: 100px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .sensor-unit {
+            font-size: 2rem;
+            vertical-align: super;
+            margin-left: 5px;
+            color: rgba(0, 225, 255, 0.7);
+        }
+
+        .sensor-details {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 25px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(0, 225, 255, 0.2);
+        }
+
+        .detail-item {
+            text-align: center;
+        }
+
+        .detail-label {
+            font-size: 0.9rem;
+            color: rgba(0, 225, 255, 0.7);
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .detail-value {
+            font-size: 1.3rem;
+            color: #00e1ff;
+            font-weight: 600;
+        }
+
+        .data-info {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 0.9rem;
+            color: rgba(0, 225, 255, 0.6);
+        }
+
+        .timestamp {
+            color: rgba(0, 225, 255, 0.9);
+            font-weight: 600;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding: 20px;
+            color: rgba(0, 225, 255, 0.6);
+            font-size: 0.9rem;
+            letter-spacing: 1px;
+            border-top: 1px solid rgba(0, 225, 255, 0.1);
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(0, 225, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #00e1ff;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.7; }
+            50% { opacity: 1; }
+            100% { opacity: 0.7; }
+        }
+
+        @keyframes glow {
+            0% { text-shadow: 0 0 5px rgba(0, 225, 255, 0.7); }
+            50% { text-shadow: 0 0 20px rgba(0, 225, 255, 0.9); }
+            100% { text-shadow: 0 0 5px rgba(0, 225, 255, 0.7); }
+        }
+
+        .glow-effect {
+            animation: glow 3s infinite;
+        }
+
+        .grid-lines {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                linear-gradient(rgba(0, 225, 255, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 225, 255, 0.05) 1px, transparent 1px);
+            background-size: 50px 50px;
+            z-index: -1;
+            opacity: 0.3;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .sensor-value {
+                font-size: 3.5rem;
+            }
+            
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+            
+            .status-bar {
+                flex-direction: column;
+                align-items: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="grid-lines"></div>
+    
+    <div class="container">
+        <header class="header">
+            <h1><span class="glow-effect">HAMENS</span></h1>
+            <p>Monitor Climático en Tiempo Real</p>
+        </header>
+
+        <div class="status-bar">
+            <div class="status-item">
+                <div class="status-dot" id="firebase-status"></div>
+                <div class="status-text" id="firebase-status-text">Conectando a Firebase...</div>
+            </div>
+            
+            <div class="status-item">
+                <div class="status-dot" id="esp32-status"></div>
+                <div class="status-text" id="esp32-status-text">Esperando ESP32</div>
+            </div>
+        </div>
+
+        <div class="dashboard">
+            <div class="sensor-card">
+                <div class="sensor-icon">
+                    <i class="fas fa-thermometer-half"></i>
+                </div>
+                
+                <h2 class="sensor-title">Temperatura</h2>
+                
+                <div class="sensor-value" id="temperature-value">
+                    <div class="loading"></div>
+                </div>
+                
+                <div class="sensor-details">
+                    <div class="detail-item">
+                        <div class="detail-label">Mínima</div>
+                        <div class="detail-value" id="temp-min">-- °C</div>
+                    </div>
+                    
+                    <div class="detail-item">
+                        <div class="detail-label">Máxima</div>
+                        <div class="detail-value" id="temp-max">-- °C</div>
+                    </div>
+                    
+                    <div class="detail-item">
+                        <div class="detail-label">Sensación</div>
+                        <div class="detail-value" id="temp-feel">-- °C</div>
+                    </div>
+                </div>
+                
+                <div class="data-info">
+                    Actualizado: <span class="timestamp" id="temp-timestamp">--:--:--</span>
+                </div>
+            </div>
+
+            <div class="sensor-card">
+                <div class="sensor-icon">
+                    <i class="fas fa-tint"></i>
+                </div>
+                
+                <h2 class="sensor-title">Humedad</h2>
+                
+                <div class="sensor-value" id="humidity-value">
+                    <div class="loading"></div>
+                </div>
+                
+                <div class="sensor-details">
+                    <div class="detail-item">
+                        <div class="detail-label">Mínima</div>
+                        <div class="detail-value" id="hum-min">-- %</div>
+                    </div>
+                    
+                    <div class="detail-item">
+                        <div class="detail-label">Máxima</div>
+                        <div class="detail-value" id="hum-max">-- %</div>
+                    </div>
+                    
+                    <div class="detail-item">
+                        <div class="detail-label">Punto de rocío</div>
+                        <div class="detail-value" id="dew-point">-- °C</div>
+                    </div>
+                </div>
+                
+                <div class="data-info">
+                    Actualizado: <span class="timestamp" id="hum-timestamp">--:--:--</span>
+                </div>
+            </div>
+        </div>
+
+        <footer class="footer">
+            <p>Sistema HAMENS • Monitor Climático en Tiempo Real</p>
+            <p>Conectado a Firebase • Actualización automática</p>
+        </footer>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    
+    <script>
+        // ==============================================
+        // CONFIGURACIÓN DE FIREBASE - HAMENS
+        // ==============================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyApxusWI0IvSGWfIdYsQwabd2ZXsPnAe3A",
+            authDomain: "hamens-9ce93.firebaseapp.com",
+            databaseURL: "https://hamens-9ce93-default-rtdb.firebaseio.com",
+            projectId: "hamens-9ce93",
+            storageBucket: "hamens-9ce93.firebasestorage.app",
+            messagingSenderId: "964134282240",
+            appId: "1:964134282240:web:ef8d27845b4a6121eba4e5"
+        };
+        
+        // ==============================================
+        // INICIALIZACIÓN DE FIREBASE
+        // ==============================================
+        let app;
+        let database;
+        let isFirebaseConnected = false;
+        let tempHistory = [];
+        let humHistory = [];
+        const MAX_HISTORY = 20;
+        
+        function initializeFirebase() {
+            try {
+                app = firebase.initializeApp(firebaseConfig);
+                database = firebase.database();
+                updateFirebaseStatus(true, "Conectado a HAMENS");
+                setupRealtimeListeners();
+                console.log("HAMENS Firebase conectado correctamente");
+            } catch (error) {
+                console.error("Error al conectar con Firebase:", error);
+                updateFirebaseStatus(false, "Error de conexión");
+                // Usar datos simulados si no hay Firebase
+                setTimeout(startSimulation, 2000);
+            }
+        }
+        
+        function updateFirebaseStatus(connected, message) {
+            isFirebaseConnected = connected;
+            const statusIndicator = document.getElementById('firebase-status');
+            const statusText = document.getElementById('firebase-status-text');
+            
+            if (connected) {
+                statusIndicator.className = 'status-dot online';
+                statusText.textContent = message;
+            } else {
+                statusIndicator.className = 'status-dot';
+                statusText.textContent = message;
+            }
+        }
+        
+        function updateESP32Status(connected, message) {
+            const statusIndicator = document.getElementById('esp32-status');
+            const statusText = document.getElementById('esp32-status-text');
+            
+            if (connected) {
+                statusIndicator.className = 'status-dot online';
+                statusText.textContent = message;
+            } else {
+                statusIndicator.className = 'status-dot';
+                statusText.textContent = message;
+            }
+        }
+        
+        function setupRealtimeListeners() {
+            // Escuchar datos del sensor de temperatura
+            const tempRef = database.ref('sensors/temperature');
+            tempRef.on('value', (snapshot) => {
+                const data = snapshot.val();
+                if (data) {
+                    updateTemperatureData(data);
+                    updateESP32Status(true, "ESP32 Conectado");
+                }
+            });
+            
+            // Escuchar datos del sensor de humedad
+            const humRef = database.ref('sensors/humidity');
+            humRef.on('value', (snapshot) => {
+                const data = snapshot.val();
+                if (data) {
+                    updateHumidityData(data);
+                    updateESP32Status(true, "ESP32 Conectado");
+                }
+            });
+            
+            // Escuchar información del dispositivo ESP32
+            const deviceRef = database.ref('device');
+            deviceRef.on('value', (snapshot) => {
+                const data = snapshot.val();
+                if (data) {
+                    updateESP32Status(data.status === 'online', 
+                                    data.status === 'online' ? "ESP32 Conectado" : "ESP32 Desconectado");
+                }
+            });
+            
+            const connectedRef = database.ref(".info/connected");
+            connectedRef.on("value", (snap) => {
+                if (snap.val() === true) {
+                    updateFirebaseStatus(true, "Conectado a HAMENS");
+                } else {
+                    updateFirebaseStatus(false, "Desconectado de HAMENS");
+                }
+            });
+        }
+        
+        function updateTemperatureData(data) {
+            const tempValue = parseFloat(data.value);
+            const timestamp = data.timestamp ? new Date(data.timestamp) : new Date();
+            
+            document.getElementById('temperature-value').innerHTML = 
+                `${tempValue.toFixed(1)}<span class="sensor-unit">°C</span>`;
+            
+            document.getElementById('temp-timestamp').textContent = 
+                timestamp.toLocaleTimeString('es-ES', {hour12: false});
+            
+            tempHistory.push(tempValue);
+            if (tempHistory.length > MAX_HISTORY) {
+                tempHistory.shift();
+            }
+            
+            const tempMin = tempHistory.length > 0 ? Math.min(...tempHistory).toFixed(1) : tempValue.toFixed(1);
+            const tempMax = tempHistory.length > 0 ? Math.max(...tempHistory).toFixed(1) : tempValue.toFixed(1);
+            
+            const humValue = parseFloat(document.getElementById('humidity-value').textContent) || 50;
+            const heatIndex = calculateHeatIndex(tempValue, humValue);
+            
+            document.getElementById('temp-min').textContent = `${tempMin} °C`;
+            document.getElementById('temp-max').textContent = `${tempMax} °C`;
+            document.getElementById('temp-feel').textContent = `${heatIndex.toFixed(1)} °C`;
+            
+            flashElement(document.getElementById('temperature-value'));
+        }
+        
+        function updateHumidityData(data) {
+            const humValue = parseFloat(data.value);
+            const timestamp = data.timestamp ? new Date(data.timestamp) : new Date();
+            
+            document.getElementById('humidity-value').innerHTML = 
+                `${humValue.toFixed(0)}<span class="sensor-unit">%</span>`;
+            
+            document.getElementById('hum-timestamp').textContent = 
+                timestamp.toLocaleTimeString('es-ES', {hour12: false});
+            
+            humHistory.push(humValue);
+            if (humHistory.length > MAX_HISTORY) {
+                humHistory.shift();
+            }
+            
+            const humMin = humHistory.length > 0 ? Math.min(...humHistory).toFixed(0) : humValue.toFixed(0);
+            const humMax = humHistory.length > 0 ? Math.max(...humHistory).toFixed(0) : humValue.toFixed(0);
+            const tempValue = parseFloat(document.getElementById('temperature-value').textContent) || 22;
+            const dewPoint = calculateDewPoint(tempValue, humValue);
+            
+            document.getElementById('hum-min').textContent = `${humMin} %`;
+            document.getElementById('hum-max').textContent = `${humMax} %`;
+            document.getElementById('dew-point').textContent = `${dewPoint.toFixed(1)} °C`;
+            
+            flashElement(document.getElementById('humidity-value'));
+        }
+        
+        function calculateHeatIndex(temperature, humidity) {
+            
+            if (temperature < 27) return temperature;
+            
+            const c1 = -8.78469475556;
+            const c2 = 1.61139411;
+            const c3 = 2.33854883889;
+            const c4 = -0.14611605;
+            const c5 = -0.012308094;
+            const c6 = -0.0164248277778;
+            const c7 = 0.002211732;
+            const c8 = 0.00072546;
+            const c9 = -0.000003582;
+            
+            const T = temperature;
+            const R = humidity;
+            
+            return c1 + c2*T + c3*R + c4*T*R + c5*T*T + c6*R*R + c7*T*T*R + c8*T*R*R + c9*T*T*R*R;
+        }
+        
+        function calculateDewPoint(temperature, humidity) {
+            
+            const a = 17.27;
+            const b = 237.7;
+            const alpha = ((a * temperature) / (b + temperature)) + Math.log(humidity / 100.0);
+            return (b * alpha) / (a - alpha);
+        }
+        
+        function flashElement(element) {
+            element.style.transform = 'scale(1.05)';
+            element.style.transition = 'transform 0.3s ease';
+            
+            setTimeout(() => {
+                element.style.transform = 'scale(1)';
+            }, 300);
+        }
+        
+        function startSimulation() {
+            console.log("Iniciando modo simulación (sin Firebase)");
+            updateFirebaseStatus(false, "Modo simulación activado");
+            updateESP32Status(true, "ESP32 Simulado");
+            
+            generateSimulatedData();
+            
+            setInterval(generateSimulatedData, 3000);
+        }
+        
+        function generateSimulatedData() {
+            const now = new Date();
+            const simulatedTemp = 22 + (Math.random() * 4 - 2); 
+            const simulatedHum = 60 + (Math.random() * 10 - 5); 
+            
+            document.getElementById('temperature-value').innerHTML = 
+                `${simulatedTemp.toFixed(1)}<span class="sensor-unit">°C</span>`;
+            document.getElementById('temp-timestamp').textContent = 
+                now.toLocaleTimeString('es-ES', {hour12: false});
+            document.getElementById('humidity-value').innerHTML = 
+                `${simulatedHum.toFixed(0)}<span class="sensor-unit">%</span>`;
+            document.getElementById('hum-timestamp').textContent = 
+                now.toLocaleTimeString('es-ES', {hour12: false});
+            
+            tempHistory.push(simulatedTemp);
+            humHistory.push(simulatedHum);
+            
+            if (tempHistory.length > MAX_HISTORY) {
+                tempHistory.shift();
+                humHistory.shift();
+            }
+            
+            const tempMin = Math.min(...tempHistory).toFixed(1);
+            const tempMax = Math.max(...tempHistory).toFixed(1);
+            const humMin = Math.min(...humHistory).toFixed(0);
+            const humMax = Math.max(...humHistory).toFixed(0);
+            const heatIndex = calculateHeatIndex(simulatedTemp, simulatedHum);
+            const dewPoint = calculateDewPoint(simulatedTemp, simulatedHum);
+            
+            document.getElementById('temp-min').textContent = `${tempMin} °C`;
+            document.getElementById('temp-max').textContent = `${tempMax} °C`;
+            document.getElementById('temp-feel').textContent = `${heatIndex.toFixed(1)} °C`;
+            document.getElementById('hum-min').textContent = `${humMin} %`;
+            document.getElementById('hum-max').textContent = `${humMax} %`;
+            document.getElementById('dew-point').textContent = `${dewPoint.toFixed(1)} °C`;
+            
+            flashElement(document.getElementById('temperature-value'));
+            flashElement(document.getElementById('humidity-value'));
+        }
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeFirebase();
+        });
+    </script>
+</body>
+</html>
