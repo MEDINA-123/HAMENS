@@ -299,7 +299,7 @@
         <div class="status-bar">
             <div class="status-item">
                 <div class="status-dot" id="firebase-status"></div>
-                <div class="status-text" id="firebase-status-text">Conectando a Firebase...</div>
+                <div class="status-text" id="firebase-status-text">Conectando a HAMENS...</div>
             </div>
             
             <div class="status-item">
@@ -416,9 +416,9 @@
                 database = firebase.database();
                 updateFirebaseStatus(true, "Conectado a HAMENS");
                 setupRealtimeListeners();
-                console.log("HAMENS Firebase conectado correctamente");
+                console.log("✅ HAMENS Firebase conectado correctamente");
             } catch (error) {
-                console.error("Error al conectar con Firebase:", error);
+                console.error("❌ Error al conectar con Firebase:", error);
                 updateFirebaseStatus(false, "Error de conexión");
                 // Usar datos simulados si no hay Firebase
                 setTimeout(startSimulation, 2000);
@@ -452,104 +452,145 @@
             }
         }
         
+        // ==============================================
+        // LISTENERS EN TIEMPO REAL DE FIREBASE
+        // ==============================================
         function setupRealtimeListeners() {
+            console.log("🔍 Configurando listeners de Firebase...");
+            
+            // IMPORTANTE: La estructura en Firebase es:
+            // sensors/
+            //   ├── temperature/
+            //   │   └── value: 22.5
+            //   └── humidity/
+            //       └── value: 65
+            
             // Escuchar datos del sensor de temperatura
-            const tempRef = database.ref('sensors/temperature');
+            const tempRef = database.ref('sensors/temperature/value');
             tempRef.on('value', (snapshot) => {
-                const data = snapshot.val();
-                if (data) {
-                    updateTemperatureData(data);
+                const tempValue = snapshot.val();
+                console.log("🌡️  Temperatura recibida:", tempValue);
+                if (tempValue !== null) {
+                    updateTemperatureData(tempValue);
                     updateESP32Status(true, "ESP32 Conectado");
                 }
             });
             
             // Escuchar datos del sensor de humedad
-            const humRef = database.ref('sensors/humidity');
+            const humRef = database.ref('sensors/humidity/value');
             humRef.on('value', (snapshot) => {
-                const data = snapshot.val();
-                if (data) {
-                    updateHumidityData(data);
+                const humValue = snapshot.val();
+                console.log("💧 Humedad recibida:", humValue);
+                if (humValue !== null) {
+                    updateHumidityData(humValue);
                     updateESP32Status(true, "ESP32 Conectado");
                 }
             });
             
-            // Escuchar información del dispositivo ESP32
+            // Escuchar información del dispositivo ESP32 (si existe)
             const deviceRef = database.ref('device');
             deviceRef.on('value', (snapshot) => {
                 const data = snapshot.val();
                 if (data) {
+                    console.log("📱 Datos del dispositivo:", data);
                     updateESP32Status(data.status === 'online', 
                                     data.status === 'online' ? "ESP32 Conectado" : "ESP32 Desconectado");
                 }
             });
             
+            // Verificar conexión de Firebase
             const connectedRef = database.ref(".info/connected");
             connectedRef.on("value", (snap) => {
                 if (snap.val() === true) {
                     updateFirebaseStatus(true, "Conectado a HAMENS");
+                    console.log("✅ Firebase realmente conectado");
                 } else {
                     updateFirebaseStatus(false, "Desconectado de HAMENS");
+                    console.log("❌ Firebase desconectado");
                 }
             });
         }
         
-        function updateTemperatureData(data) {
-            const tempValue = parseFloat(data.value);
-            const timestamp = data.timestamp ? new Date(data.timestamp) : new Date();
+        // ==============================================
+        // ACTUALIZACIÓN DE LA INTERFAZ
+        // ==============================================
+        function updateTemperatureData(tempValue) {
+            const now = new Date();
             
+            console.log("📊 Actualizando temperatura:", tempValue);
+            
+            // Actualizar valor principal
             document.getElementById('temperature-value').innerHTML = 
                 `${tempValue.toFixed(1)}<span class="sensor-unit">°C</span>`;
             
+            // Actualizar timestamp
             document.getElementById('temp-timestamp').textContent = 
-                timestamp.toLocaleTimeString('es-ES', {hour12: false});
+                now.toLocaleTimeString('es-ES', {hour12: false});
             
+            // Guardar en historial
             tempHistory.push(tempValue);
             if (tempHistory.length > MAX_HISTORY) {
                 tempHistory.shift();
             }
             
+            // Calcular mínima y máxima
             const tempMin = tempHistory.length > 0 ? Math.min(...tempHistory).toFixed(1) : tempValue.toFixed(1);
             const tempMax = tempHistory.length > 0 ? Math.max(...tempHistory).toFixed(1) : tempValue.toFixed(1);
             
+            // Calcular sensación térmica (fórmula simplificada)
             const humValue = parseFloat(document.getElementById('humidity-value').textContent) || 50;
             const heatIndex = calculateHeatIndex(tempValue, humValue);
             
+            // Actualizar detalles
             document.getElementById('temp-min').textContent = `${tempMin} °C`;
             document.getElementById('temp-max').textContent = `${tempMax} °C`;
             document.getElementById('temp-feel').textContent = `${heatIndex.toFixed(1)} °C`;
             
+            // Efecto visual cuando hay nuevos datos
             flashElement(document.getElementById('temperature-value'));
         }
         
-        function updateHumidityData(data) {
-            const humValue = parseFloat(data.value);
-            const timestamp = data.timestamp ? new Date(data.timestamp) : new Date();
+        function updateHumidityData(humValue) {
+            const now = new Date();
             
+            console.log("📊 Actualizando humedad:", humValue);
+            
+            // Actualizar valor principal
             document.getElementById('humidity-value').innerHTML = 
                 `${humValue.toFixed(0)}<span class="sensor-unit">%</span>`;
             
+            // Actualizar timestamp
             document.getElementById('hum-timestamp').textContent = 
-                timestamp.toLocaleTimeString('es-ES', {hour12: false});
+                now.toLocaleTimeString('es-ES', {hour12: false});
             
+            // Guardar en historial
             humHistory.push(humValue);
             if (humHistory.length > MAX_HISTORY) {
                 humHistory.shift();
             }
             
+            // Calcular mínima y máxima
             const humMin = humHistory.length > 0 ? Math.min(...humHistory).toFixed(0) : humValue.toFixed(0);
             const humMax = humHistory.length > 0 ? Math.max(...humHistory).toFixed(0) : humValue.toFixed(0);
+            
+            // Calcular punto de rocío (fórmula simplificada)
             const tempValue = parseFloat(document.getElementById('temperature-value').textContent) || 22;
             const dewPoint = calculateDewPoint(tempValue, humValue);
             
+            // Actualizar detalles
             document.getElementById('hum-min').textContent = `${humMin} %`;
             document.getElementById('hum-max').textContent = `${humMax} %`;
             document.getElementById('dew-point').textContent = `${dewPoint.toFixed(1)} °C`;
             
+            // Efecto visual cuando hay nuevos datos
             flashElement(document.getElementById('humidity-value'));
         }
         
+        // ==============================================
+        // FUNCIONES DE CÁLCULO
+        // ==============================================
         function calculateHeatIndex(temperature, humidity) {
-            
+            // Fórmula simplificada del índice de calor
             if (temperature < 27) return temperature;
             
             const c1 = -8.78469475556;
@@ -569,7 +610,7 @@
         }
         
         function calculateDewPoint(temperature, humidity) {
-            
+            // Fórmula para calcular el punto de rocío
             const a = 17.27;
             const b = 237.7;
             const alpha = ((a * temperature) / (b + temperature)) + Math.log(humidity / 100.0);
@@ -585,30 +626,41 @@
             }, 300);
         }
         
+        // ==============================================
+        // SIMULACIÓN DE DATOS (para pruebas)
+        // ==============================================
         function startSimulation() {
-            console.log("Iniciando modo simulación (sin Firebase)");
+            console.log("🚀 Iniciando modo simulación");
             updateFirebaseStatus(false, "Modo simulación activado");
             updateESP32Status(true, "ESP32 Simulado");
             
+            // Generar datos iniciales
             generateSimulatedData();
             
+            // Actualizar cada 3 segundos
             setInterval(generateSimulatedData, 3000);
         }
         
         function generateSimulatedData() {
             const now = new Date();
-            const simulatedTemp = 22 + (Math.random() * 4 - 2); 
-            const simulatedHum = 60 + (Math.random() * 10 - 5); 
+            const simulatedTemp = 22 + (Math.random() * 4 - 2); // 20-24°C
+            const simulatedHum = 60 + (Math.random() * 10 - 5); // 55-65%
             
+            console.log("🎮 Simulando datos:", simulatedTemp.toFixed(1), "°C,", simulatedHum.toFixed(0), "%");
+            
+            // Actualizar temperatura
             document.getElementById('temperature-value').innerHTML = 
                 `${simulatedTemp.toFixed(1)}<span class="sensor-unit">°C</span>`;
             document.getElementById('temp-timestamp').textContent = 
                 now.toLocaleTimeString('es-ES', {hour12: false});
+            
+            // Actualizar humedad
             document.getElementById('humidity-value').innerHTML = 
                 `${simulatedHum.toFixed(0)}<span class="sensor-unit">%</span>`;
             document.getElementById('hum-timestamp').textContent = 
                 now.toLocaleTimeString('es-ES', {hour12: false});
             
+            // Guardar en historial
             tempHistory.push(simulatedTemp);
             humHistory.push(simulatedHum);
             
@@ -617,6 +669,7 @@
                 humHistory.shift();
             }
             
+            // Calcular estadísticas
             const tempMin = Math.min(...tempHistory).toFixed(1);
             const tempMax = Math.max(...tempHistory).toFixed(1);
             const humMin = Math.min(...humHistory).toFixed(0);
@@ -624,6 +677,7 @@
             const heatIndex = calculateHeatIndex(simulatedTemp, simulatedHum);
             const dewPoint = calculateDewPoint(simulatedTemp, simulatedHum);
             
+            // Actualizar detalles
             document.getElementById('temp-min').textContent = `${tempMin} °C`;
             document.getElementById('temp-max').textContent = `${tempMax} °C`;
             document.getElementById('temp-feel').textContent = `${heatIndex.toFixed(1)} °C`;
@@ -631,12 +685,21 @@
             document.getElementById('hum-max').textContent = `${humMax} %`;
             document.getElementById('dew-point').textContent = `${dewPoint.toFixed(1)} °C`;
             
+            // Efecto visual
             flashElement(document.getElementById('temperature-value'));
             flashElement(document.getElementById('humidity-value'));
         }
         
+        // ==============================================
+        // INICIALIZACIÓN
+        // ==============================================
         document.addEventListener('DOMContentLoaded', function() {
+            console.log("🚀 Iniciando HAMENS Monitor...");
             initializeFirebase();
+            
+            // Abrir consola de debugging
+            console.log("📋 Para debugging, presiona F12 y ve a 'Consola'");
+            console.log("🔍 Verificando conexión a Firebase...");
         });
     </script>
 </body>
