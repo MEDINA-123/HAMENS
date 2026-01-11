@@ -378,12 +378,11 @@
         <header class="header">
             <div class="header-title">
                 <h1><span class="glow-effect">Análisis de Humedad</span></h1>
-                <p>Datos históricos y análisis en tiempo real del sistema HAMENS</p>
+                <p>Datos en tiempo real e históricos del sistema HAMENS</p>
             </div>
             
             <a href="index.html" class="back-button">
-                <i class="fas fa-arrow-left"></i>
-                Volver al Dashboard
+                <i class="fas fa-arrow-left"></i> Volver al Dashboard
             </a>
         </header>
 
@@ -393,7 +392,7 @@
                     <i class="fas fa-tint"></i>
                 </div>
                 <div class="stat-label">Humedad Actual</div>
-                <div class="stat-value" id="humActual">-- %</div>
+                <div class="stat-value" id="current-hum">-- %</div>
                 <div class="humidity-status">
                     <div class="status-dot" id="humStatusDot"></div>
                     <span id="humStatusText">--</span>
@@ -405,7 +404,7 @@
                     <i class="fas fa-tint-slash"></i>
                 </div>
                 <div class="stat-label">Mínima Hoy</div>
-                <div class="stat-value" id="minHum">-- %</div>
+                <div class="stat-value" id="min-hum">-- %</div>
             </div>
             
             <div class="stat-card">
@@ -413,7 +412,7 @@
                     <i class="fas fa-tint"></i>
                 </div>
                 <div class="stat-label">Máxima Hoy</div>
-                <div class="stat-value" id="maxHum">-- %</div>
+                <div class="stat-value" id="max-hum">-- %</div>
             </div>
             
             <div class="stat-card">
@@ -421,7 +420,7 @@
                     <i class="fas fa-chart-line"></i>
                 </div>
                 <div class="stat-label">Promedio Hoy</div>
-                <div class="stat-value" id="avgHum">-- %</div>
+                <div class="stat-value" id="avg-hum">-- %</div>
             </div>
         </div>
 
@@ -490,7 +489,7 @@
                 <i class="fas fa-home"></i> Inicio
             </a>
             <a href="temperatura.html" class="nav-button">
-                <i class="fas fa-thermometer-half"></i> Ver Análisis de Temperatura
+                <i class="fas fa-thermometer-half"></i> Ver Gráficas de Temperatura
             </a>
         </div>
 
@@ -525,12 +524,101 @@
         console.log("✅ Firebase inicializado para gráficas de humedad");
         
         let humChart, pieChartRangos, pieChartEstados;
-        let todosLosDatos = [];
+        let todosLosDatos = []; // Datos históricos
+        let humidityData = [];  // Datos en tiempo real
         let registrosMostrados = 20;
+        let temperaturaActual = 22.0; // Para cálculo de punto de rocío
 
         // ==============================================
-        // FUNCIONES PRINCIPALES
+        // FUNCIONES PRINCIPALES - ACTUALIZADAS
         // ==============================================
+
+        // ⭐⭐ ESCUCHAR HUMEDAD EN TIEMPO REAL ⭐⭐
+        function escucharHumedadActual() {
+            firebase.database().ref('humedad').on('value', (snapshot) => {
+                const hum = snapshot.val();
+                if (hum !== null) {
+                    // Actualizar valor actual
+                    document.getElementById('current-hum').textContent = Math.round(hum) + ' %';
+                    document.getElementById('humActual').textContent = Math.round(hum) + ' %';
+                    
+                    // Actualizar estado
+                    actualizarEstadoHumedad(hum);
+                    
+                    // Agregar a datos de gráfica
+                    const now = new Date();
+                    const timeLabel = now.toLocaleTimeString('es-ES', {hour12: false});
+                    
+                    humidityData.push({
+                        time: timeLabel,
+                        value: hum,
+                        timestamp: now
+                    });
+                    
+                    // Mantener solo últimos 50 puntos
+                    if (humidityData.length > 50) {
+                        humidityData.shift();
+                    }
+                    
+                    // Actualizar gráfica si está en modo "Hoy"
+                    const dias = parseInt(document.getElementById('selectRango').value);
+                    if (dias === 1) {
+                        actualizarGraficaTiempoReal();
+                    }
+                    
+                    // Actualizar estadísticas
+                    calcularEstadisticasHumedad();
+                    actualizarTimestamp();
+                    
+                    // Calcular punto de rocío
+                    calcularPuntoRocio(temperaturaActual, hum);
+                }
+            });
+            
+            // También escuchar temperatura para cálculos
+            firebase.database().ref('temperatura').on('value', (snapshot) => {
+                const temp = snapshot.val();
+                if (temp !== null) {
+                    temperaturaActual = temp;
+                    // Recalcular punto de rocío con nueva temperatura
+                    const humActual = parseFloat(document.getElementById('current-hum').textContent);
+                    if (!isNaN(humActual)) {
+                        calcularPuntoRocio(temp, humActual);
+                    }
+                }
+            });
+        }
+
+        // ⭐⭐ ACTUALIZAR GRÁFICA EN TIEMPO REAL ⭐⭐
+        function actualizarGraficaTiempoReal() {
+            if (!humChart || humidityData.length === 0) return;
+            
+            const hoy = new Date();
+            hoy.setHours(0, 0, 0, 0);
+            const datosHoy = humidityData.filter(d => d.timestamp >= hoy);
+            
+            if (datosHoy.length === 0) return;
+            
+            // Agrupar por hora
+            const datosPorHora = {};
+            datosHoy.forEach(dato => {
+                const hora = dato.timestamp.getHours().toString().padStart(2, '0') + ':00';
+                if (!datosPorHora[hora]) datosPorHora[hora] = [];
+                datosPorHora[hora].push(dato.value);
+            });
+            
+            const labels = Object.keys(datosPorHora).sort();
+            const valores = labels.map(hora => {
+                const hums = datosPorHora[hora];
+                return hums.reduce((a, b) => a + b, 0) / hums.length;
+            });
+            
+            humChart.data.labels = labels;
+            humChart.data.datasets[0].data = valores;
+            humChart.update();
+        }
+
+        // ⭐⭐ CARGAR DATOS HISTÓRICOS ⭐⭐
         async function cargarTodosLosDatos() {
             try {
                 console.log("📥 Cargando datos históricos de humedad...");
@@ -554,287 +642,63 @@
                         });
                     });
                     
-                    // Ordenar por fecha más reciente primero
                     todosLosDatos.sort((a, b) => b.timestamp - a.timestamp);
+                    console.log(`✅ ${todosLosDatos.length} registros históricos cargados`);
                     
-                    console.log(`✅ ${todosLosDatos.length} registros de humedad cargados`);
-                    
-                    // Ocultar loading
                     document.getElementById('loadingChart').style.display = 'none';
-                    
-                    // Calcular estadísticas
-                    calcularEstadisticas();
-                    
-                    // Actualizar gráficas y tabla
+                    calcularEstadisticasHumedad();
                     cargarDatosGrafica();
                     actualizarTabla();
-                    
-                    // Actualizar timestamp
                     actualizarTimestamp();
-                } else {
-                    console.log("📭 No hay datos históricos de humedad aún");
-                    mostrarDatosDeEjemplo();
                 }
             } catch (error) {
-                console.error('❌ Error cargando datos de humedad:', error);
-                mostrarDatosDeEjemplo();
+                console.error('❌ Error cargando datos:', error);
             }
         }
 
-        function cargarDatosGrafica() {
-            if (todosLosDatos.length === 0) return;
-            
-            const dias = parseInt(document.getElementById('selectRango').value);
-            let datosFiltrados = [];
-            
-            if (dias === 1) {
-                // Solo datos de hoy
-                const hoy = new Date();
-                hoy.setHours(0, 0, 0, 0);
-                datosFiltrados = todosLosDatos.filter(d => d.timestamp >= hoy);
-            } else {
-                // Múltiples días
-                const fechaLimite = new Date();
-                fechaLimite.setDate(fechaLimite.getDate() - dias);
-                datosFiltrados = todosLosDatos.filter(d => d.timestamp >= fechaLimite);
-            }
-            
-            if (datosFiltrados.length === 0) {
-                datosFiltrados = todosLosDatos.slice(-50); // Mostrar últimos 50 si no hay filtrados
-            }
-            
-            crearGraficasConDatos(datosFiltrados);
-        }
-
-        function crearGraficasConDatos(datos) {
-            const dias = parseInt(document.getElementById('selectRango').value);
-            let labels = [];
-            let valores = [];
-            
-            if (dias === 1) {
-                // Agrupar por hora para hoy
-                const datosPorHora = {};
-                datos.forEach(dato => {
-                    const hora = dato.hora.substring(0, 5);
-                    if (!datosPorHora[hora]) datosPorHora[hora] = [];
-                    datosPorHora[hora].push(dato.humedad);
-                });
-                
-                labels = Object.keys(datosPorHora).sort();
-                valores = labels.map(hora => {
-                    const hums = datosPorHora[hora];
-                    return hums.reduce((a, b) => a + b, 0) / hums.length;
-                });
-            } else {
-                // Agrupar por fecha para múltiples días
-                const datosPorDia = {};
-                datos.forEach(dato => {
-                    if (!datosPorDia[dato.fecha]) datosPorDia[dato.fecha] = [];
-                    datosPorDia[dato.fecha].push(dato.humedad);
-                });
-                
-                labels = Object.keys(datosPorDia).sort();
-                valores = labels.map(fecha => {
-                    const hums = datosPorDia[fecha];
-                    return hums.reduce((a, b) => a + b, 0) / hums.length;
-                });
-                
-                // Formatear fechas para mostrar
-                labels = labels.map(fecha => {
-                    const [año, mes, dia] = fecha.split('-');
-                    return `${dia}/${mes}`;
-                });
-            }
-            
-            crearGraficaPrincipal(labels, valores);
-            crearGraficasPastel(datos.map(d => d.humedad));
-        }
-
-        function crearGraficaPrincipal(labels, datos) {
-            const ctx = document.getElementById('humChart').getContext('2d');
-            
-            if (humChart) {
-                humChart.destroy();
-            }
-            
-            humChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Humedad (%)',
-                        data: datos,
-                        borderColor: '#4fc3f7',
-                        backgroundColor: 'rgba(79, 195, 247, 0.1)',
-                        borderWidth: 3,
-                        fill: true,
-                        tension: 0.4,
-                        pointBackgroundColor: '#4fc3f7',
-                        pointBorderColor: '#0a192f',
-                        pointBorderWidth: 2,
-                        pointRadius: 4
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            labels: {
-                                color: '#00e1ff',
-                                font: { size: 14, weight: 'bold' }
-                            }
-                        }
-                    },
-                    scales: {
-                        x: {
-                            ticks: { color: '#00e1ff' },
-                            grid: { color: 'rgba(0, 225, 255, 0.1)' }
-                        },
-                        y: {
-                            ticks: { color: '#00e1ff' },
-                            grid: { color: 'rgba(0, 225, 255, 0.1)' },
-                            min: 0,
-                            max: 100,
-                            title: {
-                                display: true,
-                                text: 'Humedad (%)',
-                                color: '#00e1ff'
-                            }
-                        }
-                    }
-                }
-            });
-        }
-
-        function crearGraficasPastel(humedades) {
-            crearPastelRangos(humedades);
-            crearPastelEstados(humedades);
-        }
-
-        function crearPastelRangos(humedades) {
-            const ctx = document.getElementById('pieChartRangos').getContext('2d');
-            
-            if (pieChartRangos) {
-                pieChartRangos.destroy();
-            }
-
-            const rangos = [
-                { min: 0, max: 20, label: '0-20%', color: '#FF6384' },
-                { min: 20, max: 40, label: '20-40%', color: '#FF9F40' },
-                { min: 40, max: 60, label: '40-60%', color: '#FFCE56' },
-                { min: 60, max: 80, label: '60-80%', color: '#4BC0C0' },
-                { min: 80, max: 100, label: '80-100%', color: '#36A2EB' }
-            ];
-
-            const conteoRangos = rangos.map(rango => {
-                const count = humedades.filter(hum => hum >= rango.min && hum < rango.max).length;
-                return count;
-            });
-
-            pieChartRangos = new Chart(ctx, {
-                type: 'pie',
-                data: {
-                    labels: rangos.map(r => r.label),
-                    datasets: [{
-                        data: conteoRangos,
-                        backgroundColor: rangos.map(r => r.color),
-                        borderColor: 'rgba(0, 225, 255, 0.3)',
-                        borderWidth: 2
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            position: 'bottom',
-                            labels: {
-                                color: '#00e1ff',
-                                font: { size: 11 }
-                            }
-                        }
-                    }
-                }
-            });
-        }
-
-        function crearPastelEstados(humedades) {
-            const ctx = document.getElementById('pieChartEstados').getContext('2d');
-            
-            if (pieChartEstados) {
-                pieChartEstados.destroy();
-            }
-
-            const estados = [
-                { tipo: 'Seco', max: 30, color: '#FF9F40' },
-                { tipo: 'Normal', min: 30, max: 70, color: '#4BC0C0' },
-                { tipo: 'Húmedo', min: 70, color: '#36A2EB' }
-            ];
-
-            const conteoEstados = estados.map(estado => {
-                let count;
-                if (estado.tipo === 'Seco') {
-                    count = humedades.filter(hum => hum <= estado.max).length;
-                } else if (estado.tipo === 'Húmedo') {
-                    count = humedades.filter(hum => hum >= estado.min).length;
-                } else {
-                    count = humedades.filter(hum => hum > estado.min && hum < estado.max).length;
-                }
-                return count;
-            });
-
-            pieChartEstados = new Chart(ctx, {
-                type: 'pie',
-                data: {
-                    labels: estados.map(e => e.tipo),
-                    datasets: [{
-                        data: conteoEstados,
-                        backgroundColor: estados.map(e => e.color),
-                        borderColor: 'rgba(0, 225, 255, 0.3)',
-                        borderWidth: 2
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            position: 'bottom',
-                            labels: {
-                                color: '#00e1ff',
-                                font: { size: 11 }
-                            }
-                        }
-                    }
-                }
-            });
-        }
-
-        function calcularEstadisticas() {
-            if (todosLosDatos.length === 0) return;
-            
+        // ⭐⭐ CALCULAR ESTADÍSTICAS (ACTUALIZADA) ⭐⭐
+        function calcularEstadisticasHumedad() {
             const hoy = new Date();
             hoy.setHours(0, 0, 0, 0);
             
-            const datosHoy = todosLosDatos.filter(d => d.timestamp >= hoy);
+            // Combinar datos históricos con actuales
+            let todosLosValores = [];
             
-            if (datosHoy.length > 0) {
-                const humsHoy = datosHoy.map(d => d.humedad);
-                const minHum = Math.min(...humsHoy).toFixed(0);
-                const maxHum = Math.max(...humsHoy).toFixed(0);
-                const avgHum = (humsHoy.reduce((a, b) => a + b, 0) / humsHoy.length).toFixed(0);
+            // Agregar datos históricos de hoy
+            const historicoHoy = todosLosDatos.filter(d => d.timestamp >= hoy);
+            historicoHoy.forEach(d => todosLosValores.push(d.humedad));
+            
+            // Agregar datos en tiempo real
+            const tiempoRealHoy = humidityData.filter(d => d.timestamp >= hoy);
+            tiempoRealHoy.forEach(d => todosLosValores.push(d.value));
+            
+            if (todosLosValores.length > 0) {
+                const minHum = Math.min(...todosLosValores).toFixed(0);
+                const maxHum = Math.max(...todosLosValores).toFixed(0);
+                const avgHum = (todosLosValores.reduce((a, b) => a + b, 0) / todosLosValores.length).toFixed(0);
                 
-                document.getElementById('minHum').textContent = minHum + ' %';
-                document.getElementById('maxHum').textContent = maxHum + ' %';
-                document.getElementById('avgHum').textContent = avgHum + ' %';
-                
-                // Calcular estado actual
-                const ultimaHumedad = datosHoy[0]?.humedad || 0;
-                actualizarEstadoHumedad(ultimaHumedad);
+                document.getElementById('min-hum').textContent = minHum + ' %';
+                document.getElementById('max-hum').textContent = maxHum + ' %';
+                document.getElementById('avg-hum').textContent = avgHum + ' %';
             }
         }
 
+        // ⭐⭐ CALCULAR PUNTO DE ROCÍO ⭐⭐
+        function calcularPuntoRocio(temperatura, humedad) {
+            // Fórmula para calcular el punto de rocío
+            const a = 17.27;
+            const b = 237.7;
+            const alpha = ((a * temperatura) / (b + temperatura)) + Math.log(humedad / 100.0);
+            const dewPoint = (b * alpha) / (a - alpha);
+            
+            // Actualizar en la página si existe el elemento
+            const dewPointElement = document.getElementById('dew-point');
+            if (dewPointElement) {
+                dewPointElement.textContent = dewPoint.toFixed(1) + ' °C';
+            }
+        }
+
+        // ⭐⭐ ACTUALIZAR ESTADO DE HUMEDAD ⭐⭐
         function actualizarEstadoHumedad(humedad) {
             const dot = document.getElementById('humStatusDot');
             const text = document.getElementById('humStatusText');
@@ -854,6 +718,197 @@
             }
         }
 
+        // ⭐⭐ INICIALIZAR GRÁFICAS ⭐⭐
+        function inicializarGraficas() {
+            // Gráfica principal
+            const ctx = document.getElementById('humChart').getContext('2d');
+            humChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Humedad (%)',
+                        data: [],
+                        borderColor: '#4fc3f7',
+                        backgroundColor: 'rgba(79, 195, 247, 0.1)',
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            min: 0,
+                            max: 100,
+                            grid: { color: 'rgba(0, 225, 255, 0.1)' },
+                            ticks: { color: '#00e1ff' }
+                        },
+                        x: {
+                            grid: { color: 'rgba(0, 225, 255, 0.1)' },
+                            ticks: { color: '#00e1ff' }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            labels: { color: '#00e1ff' }
+                        }
+                    }
+                }
+            });
+            
+            // Gráficas de pastel (inicializar vacías)
+            inicializarGraficasPastel();
+        }
+
+        function inicializarGraficasPastel() {
+            // Inicializar gráficas de pastel vacías
+            const ctxRangos = document.getElementById('pieChartRangos').getContext('2d');
+            pieChartRangos = new Chart(ctxRangos, {
+                type: 'pie',
+                data: {
+                    labels: ['0-20%', '20-40%', '40-60%', '60-80%', '80-100%'],
+                    datasets: [{
+                        data: [0, 0, 0, 0, 0],
+                        backgroundColor: ['#FF6384', '#FF9F40', '#FFCE56', '#4BC0C0', '#36A2EB']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: { color: '#00e1ff' }
+                        }
+                    }
+                }
+            });
+            
+            const ctxEstados = document.getElementById('pieChartEstados').getContext('2d');
+            pieChartEstados = new Chart(ctxEstados, {
+                type: 'pie',
+                data: {
+                    labels: ['Seco', 'Normal', 'Húmedo'],
+                    datasets: [{
+                        data: [0, 0, 0],
+                        backgroundColor: ['#FF9F40', '#4BC0C0', '#36A2EB']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: { color: '#00e1ff' }
+                        }
+                    }
+                }
+            });
+        }
+
+        // ⭐⭐ CARGAR DATOS PARA GRÁFICA ⭐⭐
+        function cargarDatosGrafica() {
+            const dias = parseInt(document.getElementById('selectRango').value);
+            const ahora = new Date();
+            const fechaLimite = new Date(ahora.getTime() - (dias * 24 * 60 * 60 * 1000));
+            
+            let datosFiltrados = todosLosDatos.filter(d => d.timestamp >= fechaLimite);
+            
+            // Si estamos en "Hoy", combinar con datos en tiempo real
+            if (dias === 1 && humidityData.length > 0) {
+                const datosCombinados = [...datosFiltrados];
+                humidityData.forEach(datoReal => {
+                    datosCombinados.push({
+                        fecha: datoReal.timestamp.toISOString().split('T')[0],
+                        hora: datoReal.time,
+                        humedad: datoReal.value,
+                        temperatura: temperaturaActual,
+                        timestamp: datoReal.timestamp
+                    });
+                });
+                datosFiltrados = datosCombinados;
+            }
+            
+            actualizarGraficaConDatos(datosFiltrados);
+            actualizarGraficasPastel(datosFiltrados.map(d => d.humedad));
+        }
+
+        function actualizarGraficaConDatos(datos) {
+            if (datos.length === 0) return;
+            
+            const dias = parseInt(document.getElementById('selectRango').value);
+            let labels = [];
+            let valores = [];
+            
+            if (dias === 1) {
+                // Agrupar por hora
+                const datosPorHora = {};
+                datos.forEach(dato => {
+                    const hora = dato.hora.substring(0, 5);
+                    if (!datosPorHora[hora]) datosPorHora[hora] = [];
+                    datosPorHora[hora].push(dato.humedad);
+                });
+                
+                labels = Object.keys(datosPorHora).sort();
+                valores = labels.map(hora => {
+                    const hums = datosPorHora[hora];
+                    return hums.reduce((a, b) => a + b, 0) / hums.length;
+                });
+            } else {
+                // Agrupar por fecha
+                const datosPorDia = {};
+                datos.forEach(dato => {
+                    if (!datosPorDia[dato.fecha]) datosPorDia[dato.fecha] = [];
+                    datosPorDia[dato.fecha].push(dato.humedad);
+                });
+                
+                labels = Object.keys(datosPorDia).sort();
+                valores = labels.map(fecha => {
+                    const hums = datosPorDia[fecha];
+                    return hums.reduce((a, b) => a + b, 0) / hums.length;
+                });
+                
+                // Formatear fechas
+                labels = labels.map(fecha => {
+                    const [año, mes, dia] = fecha.split('-');
+                    return `${dia}/${mes}`;
+                });
+            }
+            
+            humChart.data.labels = labels;
+            humChart.data.datasets[0].data = valores;
+            humChart.update();
+        }
+
+        function actualizarGraficasPastel(humedades) {
+            if (humedades.length === 0) return;
+            
+            // Actualizar gráfica por rangos
+            const rangos = [0, 20, 40, 60, 80, 100];
+            const conteoRangos = [];
+            
+            for (let i = 0; i < rangos.length - 1; i++) {
+                const count = humedades.filter(h => h >= rangos[i] && h < rangos[i + 1]).length;
+                conteoRangos.push(count);
+            }
+            
+            pieChartRangos.data.datasets[0].data = conteoRangos;
+            pieChartRangos.update();
+            
+            // Actualizar gráfica por estados
+            const conteoEstados = [
+                humedades.filter(h => h < 30).length,
+                humedades.filter(h => h >= 30 && h <= 70).length,
+                humedades.filter(h => h > 70).length
+            ];
+            
+            pieChartEstados.data.datasets[0].data = conteoEstados;
+            pieChartEstados.update();
+        }
+
+        // ⭐⭐ FUNCIONES DE TABLA ⭐⭐
         function actualizarTabla() {
             const cuerpoTabla = document.getElementById('cuerpoTabla');
             
@@ -942,48 +997,32 @@
                 'Última actualización: ' + now.toLocaleTimeString('es-ES', {hour12: false});
         }
 
-        function mostrarDatosDeEjemplo() {
-            console.log("📊 Mostrando datos de ejemplo de humedad");
-            document.getElementById('loadingChart').style.display = 'none';
-            
-            // Datos de ejemplo para cuando no hay conexión
-            const labels = ['14:00', '15:00', '16:00', '17:00', '18:00', '19:00'];
-            const datos = [65, 68, 72, 70, 67, 64];
-            
-            crearGraficaPrincipal(labels, datos);
-            crearGraficasPastel(datos);
-            
-            document.getElementById('humActual').textContent = '68 %';
-            document.getElementById('minHum').textContent = '64 %';
-            document.getElementById('maxHum').textContent = '72 %';
-            document.getElementById('avgHum').textContent = '67 %';
-            
-            actualizarEstadoHumedad(68);
-        }
-
-        // ==============================================
-        // LISTENERS EN TIEMPO REAL
-        // ==============================================
-        firebase.database().ref('humedad').on('value', (snapshot) => {
-            const hum = snapshot.val();
-            if (hum !== null) {
-                document.getElementById('humActual').textContent = Math.round(hum) + ' %';
-                actualizarEstadoHumedad(hum);
-            }
-        });
-
         // ==============================================
         // INICIALIZACIÓN
         // ==============================================
         document.addEventListener('DOMContentLoaded', function() {
             console.log("🚀 Iniciando análisis de humedad...");
+            
+            // 1. Inicializar gráficas
+            inicializarGraficas();
+            
+            // 2. Cargar datos históricos
             cargarTodosLosDatos();
             
-            // Actualizar timestamp cada minuto
-            setInterval(actualizarTimestamp, 60000);
+            // 3. Escuchar humedad en tiempo real
+            escucharHumedadActual();
             
-            // Actualizar datos cada 30 segundos
-            setInterval(cargarTodosLosDatos, 30000);
+            // 4. Configurar actualizaciones
+            setInterval(actualizarTimestamp, 60000);
+            setInterval(() => {
+                const dias = parseInt(document.getElementById('selectRango').value);
+                if (dias === 1) {
+                    actualizarGraficaTiempoReal();
+                    calcularEstadisticasHumedad();
+                }
+            }, 30000);
+            
+            console.log("✅ Página lista. Mostrando datos en tiempo real...");
         });
     </script>
 </body>
