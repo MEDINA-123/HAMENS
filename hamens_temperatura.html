@@ -350,12 +350,11 @@
         <header class="header">
             <div class="header-title">
                 <h1><span class="glow-effect">Análisis de Temperatura</span></h1>
-                <p>Datos históricos y análisis en tiempo real del sistema HAMENS</p>
+                <p>Datos en tiempo real e históricos del sistema HAMENS</p>
             </div>
             
             <a href="index.html" class="back-button">
-                <i class="fas fa-arrow-left"></i>
-                Volver al Dashboard
+                <i class="fas fa-arrow-left"></i> Volver al Dashboard
             </a>
         </header>
 
@@ -493,12 +492,52 @@
         console.log("✅ Firebase inicializado para gráficas de temperatura");
         
         let tempChart, pieChartRangos, pieChartEstados;
-        let todosLosDatos = [];
+        let todosLosDatos = []; // Datos históricos
+        let datosTiempoReal = []; // Datos en tiempo real
         let registrosMostrados = 20;
+        let ultimaTemperaturaActual = null;
 
         // ==============================================
         // FUNCIONES PRINCIPALES
         // ==============================================
+
+        // 1. ESCUCHAR TEMPERATURA EN TIEMPO REAL
+        function escucharTemperaturaActual() {
+            firebase.database().ref('temperatura').on('value', (snapshot) => {
+                const temp = snapshot.val();
+                if (temp !== null) {
+                    ultimaTemperaturaActual = temp;
+                    
+                    // Actualizar valor actual
+                    document.getElementById('tempActual').textContent = temp.toFixed(1) + ' °C';
+                    
+                    // Agregar a datos de tiempo real
+                    const ahora = new Date();
+                    datosTiempoReal.push({
+                        tiempo: ahora,
+                        valor: temp,
+                        hora: ahora.toLocaleTimeString('es-ES', {hour12: false})
+                    });
+                    
+                    // Mantener solo últimos 100 puntos
+                    if (datosTiempoReal.length > 100) {
+                        datosTiempoReal.shift();
+                    }
+                    
+                    // Actualizar gráfica si estamos viendo "Hoy"
+                    const rango = document.getElementById('selectRango').value;
+                    if (rango === '1') {
+                        actualizarGraficaTiempoReal();
+                    }
+                    
+                    // Recalcular estadísticas
+                    calcularEstadisticas();
+                    actualizarTimestamp();
+                }
+            });
+        }
+
+        // 2. CARGAR DATOS HISTÓRICOS
         async function cargarTodosLosDatos() {
             try {
                 console.log("📥 Cargando datos históricos...");
@@ -522,102 +561,133 @@
                         });
                     });
                     
-                    // Ordenar por fecha más reciente primero
                     todosLosDatos.sort((a, b) => b.timestamp - a.timestamp);
+                    console.log(`✅ ${todosLosDatos.length} registros históricos cargados`);
                     
-                    console.log(`✅ ${todosLosDatos.length} registros cargados`);
-                    
-                    // Ocultar loading
                     document.getElementById('loadingChart').style.display = 'none';
-                    
-                    // Calcular estadísticas
                     calcularEstadisticas();
-                    
-                    // Actualizar gráficas y tabla
                     cargarDatosGrafica();
                     actualizarTabla();
-                    
-                    // Actualizar timestamp
                     actualizarTimestamp();
                 } else {
                     console.log("📭 No hay datos históricos aún");
-                    mostrarDatosDeEjemplo();
+                    document.getElementById('loadingChart').style.display = 'none';
                 }
             } catch (error) {
                 console.error('❌ Error cargando datos:', error);
-                mostrarDatosDeEjemplo();
+                document.getElementById('loadingChart').style.display = 'none';
             }
         }
 
+        // 3. CARGAR DATOS PARA GRÁFICA
         function cargarDatosGrafica() {
-            if (todosLosDatos.length === 0) return;
+            const rango = document.getElementById('selectRango').value;
             
-            const dias = parseInt(document.getElementById('selectRango').value);
-            let datosFiltrados = [];
-            
-            if (dias === 1) {
-                // Solo datos de hoy
-                const hoy = new Date();
-                hoy.setHours(0, 0, 0, 0);
-                datosFiltrados = todosLosDatos.filter(d => d.timestamp >= hoy);
+            if (rango === '1') {
+                // HOY: Combinar histórico + tiempo real
+                actualizarGraficaTiempoReal();
             } else {
-                // Múltiples días
-                const fechaLimite = new Date();
-                fechaLimite.setDate(fechaLimite.getDate() - dias);
-                datosFiltrados = todosLosDatos.filter(d => d.timestamp >= fechaLimite);
+                // RANGOS MAYORES: Solo histórico
+                let datosFiltrados = [];
+                const hoy = new Date();
+                
+                if (rango === '3') {
+                    const limite = new Date(hoy);
+                    limite.setDate(limite.getDate() - 3);
+                    datosFiltrados = todosLosDatos.filter(d => d.timestamp >= limite);
+                } else if (rango === '7') {
+                    const limite = new Date(hoy);
+                    limite.setDate(limite.getDate() - 7);
+                    datosFiltrados = todosLosDatos.filter(d => d.timestamp >= limite);
+                } else if (rango === '30') {
+                    const limite = new Date(hoy);
+                    limite.setDate(limite.getDate() - 30);
+                    datosFiltrados = todosLosDatos.filter(d => d.timestamp >= limite);
+                }
+                
+                crearGraficasConDatos(datosFiltrados);
             }
-            
-            if (datosFiltrados.length === 0) {
-                datosFiltrados = todosLosDatos.slice(-50); // Mostrar últimos 50 si no hay filtrados
-            }
-            
-            crearGraficasConDatos(datosFiltrados);
         }
 
-        function crearGraficasConDatos(datos) {
-            const dias = parseInt(document.getElementById('selectRango').value);
-            let labels = [];
-            let valores = [];
+        // 4. ACTUALIZAR GRÁFICA EN TIEMPO REAL
+        function actualizarGraficaTiempoReal() {
+            const hoy = new Date();
+            hoy.setHours(0, 0, 0, 0);
             
-            if (dias === 1) {
-                // Agrupar por hora para hoy
-                const datosPorHora = {};
-                datos.forEach(dato => {
-                    const hora = dato.hora.substring(0, 5);
-                    if (!datosPorHora[hora]) datosPorHora[hora] = [];
-                    datosPorHora[hora].push(dato.temperatura);
+            // Combinar datos históricos y tiempo real de hoy
+            const historicoHoy = todosLosDatos.filter(d => d.timestamp >= hoy);
+            const tiempoRealHoy = datosTiempoReal.filter(d => d.tiempo >= hoy);
+            
+            let todosDatosHoy = [];
+            
+            // Agregar histórico
+            historicoHoy.forEach(d => {
+                todosDatosHoy.push({
+                    hora: d.hora,
+                    valor: d.temperatura,
+                    timestamp: d.timestamp
                 });
-                
-                labels = Object.keys(datosPorHora).sort();
-                valores = labels.map(hora => {
-                    const temps = datosPorHora[hora];
-                    return temps.reduce((a, b) => a + b, 0) / temps.length;
+            });
+            
+            // Agregar tiempo real
+            tiempoRealHoy.forEach(d => {
+                todosDatosHoy.push({
+                    hora: d.hora,
+                    valor: d.valor,
+                    timestamp: d.tiempo
                 });
-            } else {
-                // Agrupar por fecha para múltiples días
-                const datosPorDia = {};
-                datos.forEach(dato => {
-                    if (!datosPorDia[dato.fecha]) datosPorDia[dato.fecha] = [];
-                    datosPorDia[dato.fecha].push(dato.temperatura);
-                });
-                
-                labels = Object.keys(datosPorDia).sort();
-                valores = labels.map(fecha => {
-                    const temps = datosPorDia[fecha];
-                    return temps.reduce((a, b) => a + b, 0) / temps.length;
-                });
-                
-                // Formatear fechas para mostrar
-                labels = labels.map(fecha => {
-                    const [año, mes, dia] = fecha.split('-');
-                    return `${dia}/${mes}`;
-                });
-            }
+            });
+            
+            // Ordenar por tiempo
+            todosDatosHoy.sort((a, b) => a.timestamp - b.timestamp);
+            
+            // Agrupar por hora para mejor visualización
+            const datosPorHora = {};
+            todosDatosHoy.forEach(dato => {
+                const hora = dato.timestamp.getHours().toString().padStart(2, '0') + ':00';
+                if (!datosPorHora[hora]) datosPorHora[hora] = [];
+                datosPorHora[hora].push(dato.valor);
+            });
+            
+            const labels = Object.keys(datosPorHora).sort();
+            const valores = labels.map(hora => {
+                const temps = datosPorHora[hora];
+                return temps.reduce((a, b) => a + b, 0) / temps.length;
+            });
             
             crearGraficaPrincipal(labels, valores);
-            crearGraficasPastel(datos.map(d => d.temperatura));
+            crearGraficasPastel(todosDatosHoy.map(d => d.valor));
         }
 
+        // 5. CALCULAR ESTADÍSTICAS
+        function calcularEstadisticas() {
+            const hoy = new Date();
+            hoy.setHours(0, 0, 0, 0);
+            
+            // Combinar histórico y tiempo real de hoy
+            const historicoHoy = todosLosDatos.filter(d => d.timestamp >= hoy);
+            const tiempoRealHoy = datosTiempoReal.filter(d => d.tiempo >= hoy);
+            
+            let todosValores = [];
+            
+            // Agregar valores históricos
+            historicoHoy.forEach(d => todosValores.push(d.temperatura));
+            
+            // Agregar valores tiempo real
+            tiempoRealHoy.forEach(d => todosValores.push(d.valor));
+            
+            if (todosValores.length > 0) {
+                const minTemp = Math.min(...todosValores).toFixed(1);
+                const maxTemp = Math.max(...todosValores).toFixed(1);
+                const avgTemp = (todosValores.reduce((a, b) => a + b, 0) / todosValores.length).toFixed(1);
+                
+                document.getElementById('minTemp').textContent = minTemp + ' °C';
+                document.getElementById('maxTemp').textContent = maxTemp + ' °C';
+                document.getElementById('avgTemp').textContent = avgTemp + ' °C';
+            }
+        }
+
+        // 6. CREAR GRÁFICA PRINCIPAL
         function crearGraficaPrincipal(labels, datos) {
             const ctx = document.getElementById('tempChart').getContext('2d');
             
@@ -673,6 +743,7 @@
             });
         }
 
+        // 7. CREAR GRÁFICAS DE PASTEL
         function crearGraficasPastel(temperaturas) {
             crearPastelRangos(temperaturas);
             crearPastelEstados(temperaturas);
@@ -777,26 +848,7 @@
             });
         }
 
-        function calcularEstadisticas() {
-            if (todosLosDatos.length === 0) return;
-            
-            const hoy = new Date();
-            hoy.setHours(0, 0, 0, 0);
-            
-            const datosHoy = todosLosDatos.filter(d => d.timestamp >= hoy);
-            
-            if (datosHoy.length > 0) {
-                const tempsHoy = datosHoy.map(d => d.temperatura);
-                const minTemp = Math.min(...tempsHoy).toFixed(1);
-                const maxTemp = Math.max(...tempsHoy).toFixed(1);
-                const avgTemp = (tempsHoy.reduce((a, b) => a + b, 0) / tempsHoy.length).toFixed(1);
-                
-                document.getElementById('minTemp').textContent = minTemp + ' °C';
-                document.getElementById('maxTemp').textContent = maxTemp + ' °C';
-                document.getElementById('avgTemp').textContent = avgTemp + ' °C';
-            }
-        }
-
+        // 8. ACTUALIZAR TABLA
         function actualizarTabla() {
             const cuerpoTabla = document.getElementById('cuerpoTabla');
             
@@ -885,45 +937,36 @@
                 'Última actualización: ' + now.toLocaleTimeString('es-ES', {hour12: false});
         }
 
-        function mostrarDatosDeEjemplo() {
-            console.log("📊 Mostrando datos de ejemplo");
-            document.getElementById('loadingChart').style.display = 'none';
-            
-            // Datos de ejemplo para cuando no hay conexión
-            const labels = ['14:00', '15:00', '16:00', '17:00', '18:00', '19:00'];
-            const datos = [25.3, 25.8, 26.2, 25.9, 25.5, 24.8];
-            
-            crearGraficaPrincipal(labels, datos);
-            crearGraficasPastel(datos);
-            
-            document.getElementById('tempActual').textContent = '25.5 °C';
-            document.getElementById('minTemp').textContent = '24.8 °C';
-            document.getElementById('maxTemp').textContent = '26.2 °C';
-            document.getElementById('avgTemp').textContent = '25.6 °C';
+        // 9. INICIALIZACIÓN
+        function inicializarGraficas() {
+            // Gráfica principal ya se inicializa en crearGraficaPrincipal
+            console.log("📊 Gráficas listas para inicializar");
         }
 
-        // ==============================================
-        // LISTENERS EN TIEMPO REAL
-        // ==============================================
-        firebase.database().ref('temperatura').on('value', (snapshot) => {
-            const temp = snapshot.val();
-            if (temp !== null) {
-                document.getElementById('tempActual').textContent = temp.toFixed(1) + ' °C';
-            }
-        });
-
-        // ==============================================
-        // INICIALIZACIÓN
-        // ==============================================
+        // 10. INICIO DEL SISTEMA
         document.addEventListener('DOMContentLoaded', function() {
             console.log("🚀 Iniciando análisis de temperatura...");
+            
+            // Inicializar
+            inicializarGraficas();
+            
+            // Cargar datos históricos
             cargarTodosLosDatos();
             
-            // Actualizar timestamp cada minuto
-            setInterval(actualizarTimestamp, 60000);
+            // Escuchar datos en tiempo real
+            escucharTemperaturaActual();
             
-            // Actualizar datos cada 30 segundos
-            setInterval(cargarTodosLosDatos, 30000);
+            // Configurar actualizaciones automáticas
+            setInterval(actualizarTimestamp, 60000);
+            setInterval(() => {
+                const rango = document.getElementById('selectRango').value;
+                if (rango === '1') {
+                    actualizarGraficaTiempoReal();
+                    calcularEstadisticas();
+                }
+            }, 30000);
+            
+            console.log("✅ Página lista. Mostrando datos en tiempo real...");
         });
     </script>
 </body>
